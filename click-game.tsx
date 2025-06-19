@@ -72,6 +72,7 @@ export default function Component() {
   const [nicknameError, setNicknameError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [connectionError, setConnectionError] = useState("")
 
   // Usar useRef para manter referências estáveis
   const gameStartedRef = useRef(false)
@@ -104,13 +105,26 @@ export default function Component() {
   const fetchRankings = async () => {
     try {
       setIsLoading(true)
+      setConnectionError("")
+
+      console.log("Carregando rankings...")
       const response = await fetch("/api/rankings")
-      if (response.ok) {
-        const data = await response.json()
-        setRankings(data)
+
+      if (!response.ok) {
+        throw new Error(`Erro HTTP: ${response.status}`)
+      }
+
+      const result = await response.json()
+      console.log("Resposta da API:", result)
+
+      if (result.success) {
+        setRankings(result.data || [])
+      } else {
+        setConnectionError(result.message || "Erro ao carregar rankings")
       }
     } catch (error) {
       console.error("Erro ao carregar ranking:", error)
+      setConnectionError("Erro ao conectar com o banco de dados. Tente novamente.")
     } finally {
       setIsLoading(false)
     }
@@ -199,6 +213,8 @@ export default function Component() {
 
     try {
       setIsSaving(true)
+      console.log(`Salvando pontuação: ${currentNickname} - ${currentScore}`)
+
       const response = await fetch("/api/rankings", {
         method: "POST",
         headers: {
@@ -207,12 +223,20 @@ export default function Component() {
         body: JSON.stringify({ nickname: currentNickname, score: currentScore }),
       })
 
-      if (response.ok) {
+      const result = await response.json()
+      console.log("Resposta do servidor:", result)
+
+      if (result.success) {
+        console.log("✅ Pontuação salva:", result.message)
         // Atualizar o ranking após salvar
         await fetchRankings()
+      } else {
+        console.error("❌ Erro ao salvar:", result.message)
+        setConnectionError(result.message)
       }
     } catch (error) {
       console.error("Erro ao salvar pontuação:", error)
+      setConnectionError("Erro ao salvar pontuação. Tente novamente.")
     } finally {
       setIsSaving(false)
     }
@@ -603,6 +627,11 @@ export default function Component() {
             </h2>
 
             <div className="mb-6 max-h-64 overflow-y-auto">
+              {connectionError && (
+                <div className="mb-4 p-3 bg-red-900/50 border border-red-500 rounded text-red-300 text-sm">
+                  ⚠️ {connectionError}
+                </div>
+              )}
               {isLoading ? (
                 <div className="flex justify-center items-center py-8">
                   <Loader2 className="animate-spin text-purple-400" size={40} />

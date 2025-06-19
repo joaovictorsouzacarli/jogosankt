@@ -1,0 +1,38 @@
+import { NextResponse } from "next/server"
+import { testConnection, checkTable, createTableIfNotExists } from "@/lib/db-robust"
+
+export async function GET() {
+  try {
+    console.log("🧪 Testando banco de dados...")
+
+    // Teste 1: Conexão
+    const connectionTest = await testConnection()
+
+    // Teste 2: Verificar tabela
+    const tableTest = await checkTable()
+
+    // Teste 3: Criar tabela se necessário
+    let tableCreated = false
+    if (!tableTest.exists) {
+      tableCreated = await createTableIfNotExists()
+    }
+
+    return NextResponse.json({
+      tests: {
+        connection: connectionTest,
+        table: tableTest,
+        tableCreated: tableCreated,
+      },
+      database_url_configured: !!process.env.DATABASE_URL,
+      timestamp: new Date().toISOString(),
+    })
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : "Erro desconhecido",
+        timestamp: new Date().toISOString(),
+      },
+      { status: 500 },
+    )
+  }
+}
