@@ -2,12 +2,24 @@
 
 import type React from "react"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import Image from "next/image"
-import { Loader2, Twitch } from "lucide-react"
+import {
+  Loader2,
+  Twitch,
+  User,
+  ExternalLink,
+  Clock,
+  Mail,
+  Globe,
+  Twitter,
+  Instagram,
+  Youtube,
+  Music,
+} from "lucide-react"
 import type { RankingEntry } from "@/lib/db"
 
 const funnyMessages = [
@@ -55,10 +67,34 @@ export default function Component() {
   const [chatMessage, setChatMessage] = useState("")
   const [nickname, setNickname] = useState("")
   const [showRanking, setShowRanking] = useState(false)
+  const [showAbout, setShowAbout] = useState(false)
   const [rankings, setRankings] = useState<RankingEntry[]>([])
   const [nicknameError, setNicknameError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+
+  // Usar useRef para manter referências estáveis
+  const gameStartedRef = useRef(false)
+  const gameOverRef = useRef(false)
+  const scoreRef = useRef(0)
+  const nicknameRef = useRef("")
+
+  // Atualizar refs quando os estados mudarem
+  useEffect(() => {
+    gameStartedRef.current = gameStarted
+  }, [gameStarted])
+
+  useEffect(() => {
+    gameOverRef.current = gameOver
+  }, [gameOver])
+
+  useEffect(() => {
+    scoreRef.current = score
+  }, [score])
+
+  useEffect(() => {
+    nicknameRef.current = nickname
+  }, [nickname])
 
   // Carregar rankings ao iniciar
   useEffect(() => {
@@ -140,6 +176,7 @@ export default function Component() {
     setShowMessage("")
     setChatMessage("")
     setShowRanking(false)
+    setShowAbout(false)
   }
 
   const resetGame = () => {
@@ -151,10 +188,14 @@ export default function Component() {
     setShowMessage("")
     setChatMessage("")
     setShowRanking(false)
+    setShowAbout(false)
   }
 
-  const saveScoreToServer = useCallback(async () => {
-    if (!nickname || score <= 0) return
+  const saveScoreToServer = async () => {
+    const currentNickname = nicknameRef.current
+    const currentScore = scoreRef.current
+
+    if (!currentNickname || currentScore <= 0) return
 
     try {
       setIsSaving(true)
@@ -163,7 +204,7 @@ export default function Component() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ nickname, score }),
+        body: JSON.stringify({ nickname: currentNickname, score: currentScore }),
       })
 
       if (response.ok) {
@@ -175,7 +216,7 @@ export default function Component() {
     } finally {
       setIsSaving(false)
     }
-  }, [nickname, score])
+  }
 
   const getScoreComment = () => {
     if (score >= 50) return "🏆 LENDA DO STREAM! SANKT ficaria orgulhoso!"
@@ -192,21 +233,40 @@ export default function Component() {
     window.open("https://www.twitch.tv/sankt", "_blank")
   }
 
+  const openLink = (url: string) => {
+    window.open(url, "_blank")
+  }
+
+  // Timer independente - SEM DEPENDÊNCIAS PROBLEMÁTICAS
   useEffect(() => {
     let timer: NodeJS.Timeout
 
     if (gameStarted && timeLeft > 0 && !gameOver) {
       timer = setTimeout(() => {
-        setTimeLeft((prev) => prev - 1)
+        setTimeLeft((prev) => {
+          const newTime = prev - 1
+
+          // Verificar se o tempo acabou
+          if (newTime === 0) {
+            // Usar setTimeout para evitar conflitos de estado
+            setTimeout(() => {
+              setGameOver(true)
+              setGameStarted(false)
+              saveScoreToServer()
+            }, 0)
+          }
+
+          return newTime
+        })
       }, 1000)
-    } else if (timeLeft === 0 && gameStarted) {
-      setGameOver(true)
-      setGameStarted(false)
-      saveScoreToServer()
     }
 
-    return () => clearTimeout(timer)
-  }, [gameStarted, timeLeft, gameOver, saveScoreToServer])
+    return () => {
+      if (timer) {
+        clearTimeout(timer)
+      }
+    }
+  }, [gameStarted, timeLeft, gameOver]) // Apenas dependências essenciais
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-700 to-indigo-900 relative overflow-hidden">
@@ -297,7 +357,7 @@ export default function Component() {
       )}
 
       {/* Tela inicial com entrada de nickname */}
-      {!gameStarted && !gameOver && !showRanking && (
+      {!gameStarted && !gameOver && !showRanking && !showAbout && (
         <div className="absolute inset-0 flex items-center justify-center z-20">
           <Card className="p-8 bg-gray-900/95 backdrop-blur-sm text-center max-w-md mx-4 border-4 border-purple-500 shadow-2xl text-white">
             <div className="flex justify-between items-center mb-4">
@@ -346,20 +406,187 @@ export default function Component() {
                 🚀 ENTRAR NO STREAM! 🚀
               </Button>
 
+              <div className="grid grid-cols-2 gap-3">
+                <Button
+                  onClick={() => setShowRanking(true)}
+                  variant="outline"
+                  size="lg"
+                  className="text-sm py-3 border-2 border-purple-400 text-white hover:bg-purple-800"
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <span className="flex items-center gap-1">
+                      <Loader2 className="animate-spin" size={16} />
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1">
+                      🏆 <span className="hidden sm:inline">RANKING</span>
+                    </span>
+                  )}
+                </Button>
+
+                <Button
+                  onClick={() => setShowAbout(true)}
+                  variant="outline"
+                  size="lg"
+                  className="text-sm py-3 border-2 border-yellow-400 text-white hover:bg-yellow-800"
+                >
+                  <span className="flex items-center gap-1">
+                    <User size={16} />
+                    <span className="hidden sm:inline">QUEM É SANKT?</span>
+                    <span className="sm:hidden">SANKT?</span>
+                  </span>
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Tela "Quem é o Sankt?" */}
+      {showAbout && !gameStarted && !gameOver && (
+        <div className="absolute inset-0 flex items-center justify-center z-20 p-4">
+          <Card className="p-6 bg-gray-900/95 backdrop-blur-sm text-center max-w-2xl mx-4 border-4 border-yellow-500 shadow-2xl text-white max-h-[90vh] overflow-y-auto">
+            <div className="text-4xl mb-4">👨‍💻</div>
+            <h2 className="text-2xl font-bold mb-6 bg-gradient-to-r from-yellow-400 to-orange-400 bg-clip-text text-transparent">
+              QUEM É O SANKT? 📻
+            </h2>
+
+            <div className="text-left space-y-4 text-gray-300">
+              <p className="text-lg">
+                Olá! 👋 Meu nome é <span className="text-yellow-400 font-bold">Marcos</span>, tenho{" "}
+                <span className="text-purple-400 font-bold">37 anos</span> e sou do{" "}
+                <span className="text-green-400 font-bold">Rio de Janeiro</span>, mas atualmente moro em{" "}
+                <span className="text-blue-400 font-bold">Lisboa (Portugal)</span> 🇵🇹 com minha esposa e minha filha.
+              </p>
+
+              <p>
+                Sou formado em <span className="text-purple-400 font-bold">Comunicação Social</span> e atuei como{" "}
+                <span className="text-yellow-400 font-bold">jornalista</span> em veículos como Lance, Band, InterTV e
+                Globo. 📺 Antes de me dedicar às lives, fui coordenador da CBF TV, na Confederação Brasileira de
+                Futebol. ⚽
+              </p>
+
+              <p>
+                No Albion Online, meu nick é <span className="text-red-400 font-bold">Sankt</span>. ⚔️ Além de jogar,
+                crio conteúdos para o canal <span className="text-purple-400 font-bold">Albion em 1 Minuto</span> no
+                YouTube e faço lives de segunda a sexta aqui na Twitch. 🎮
+              </p>
+
+              {/* Horários de transmissão */}
+              <div className="bg-purple-900/50 p-4 rounded-lg border-2 border-purple-400">
+                <h3 className="text-xl font-bold mb-3 text-yellow-300 flex items-center gap-2">
+                  <Clock size={20} />
+                  Horário das Lives (Segunda a Sexta):
+                </h3>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-lg">
+                    <span className="text-2xl">🇧🇷</span>
+                    <span className="font-bold text-green-400">7h da manhã</span>
+                    <span>- Brasília</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-lg">
+                    <span className="text-2xl">🇵🇹</span>
+                    <span className="font-bold text-blue-400">10h da manhã</span>
+                    <span>- Lisboa</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Contato */}
+              <div className="bg-gray-800/50 p-4 rounded-lg border-2 border-gray-600">
+                <h3 className="text-xl font-bold mb-3 text-yellow-300 flex items-center gap-2">
+                  <Mail size={20} />
+                  Contato:
+                </h3>
+                <p className="text-purple-300">contato.sankt@gmail.com</p>
+              </div>
+
+              {/* Redes sociais */}
+              <div className="bg-blue-900/50 p-4 rounded-lg border-2 border-blue-400">
+                <h3 className="text-xl font-bold mb-3 text-yellow-300">🌐 Redes Sociais:</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                  <button
+                    onClick={() => openLink("https://www.sankt.live/")}
+                    className="flex items-center gap-2 p-2 bg-gray-700 hover:bg-gray-600 rounded transition-colors"
+                  >
+                    <Globe size={16} />
+                    <span>Site Oficial</span>
+                    <ExternalLink size={12} />
+                  </button>
+
+                  <button
+                    onClick={() => openLink("https://www.twitch.tv/sankt")}
+                    className="flex items-center gap-2 p-2 bg-purple-700 hover:bg-purple-600 rounded transition-colors"
+                  >
+                    <Twitch size={16} />
+                    <span>Twitch</span>
+                    <ExternalLink size={12} />
+                  </button>
+
+                  <button
+                    onClick={() => openLink("https://www.youtube.com/@SanktLive")}
+                    className="flex items-center gap-2 p-2 bg-red-700 hover:bg-red-600 rounded transition-colors"
+                  >
+                    <Youtube size={16} />
+                    <span>YouTube Sankt</span>
+                    <ExternalLink size={12} />
+                  </button>
+
+                  <button
+                    onClick={() => openLink("https://www.youtube.com/@AlbionEm1Minuto")}
+                    className="flex items-center gap-2 p-2 bg-red-700 hover:bg-red-600 rounded transition-colors"
+                  >
+                    <Music size={16} />
+                    <span>Albion em 1 Min</span>
+                    <ExternalLink size={12} />
+                  </button>
+
+                  <button
+                    onClick={() => openLink("https://twitter.com/SanktLive")}
+                    className="flex items-center gap-2 p-2 bg-blue-700 hover:bg-blue-600 rounded transition-colors"
+                  >
+                    <Twitter size={16} />
+                    <span>Twitter</span>
+                    <ExternalLink size={12} />
+                  </button>
+
+                  <button
+                    onClick={() => openLink("https://www.instagram.com/sanktlive")}
+                    className="flex items-center gap-2 p-2 bg-pink-700 hover:bg-pink-600 rounded transition-colors"
+                  >
+                    <Instagram size={16} />
+                    <span>Instagram</span>
+                    <ExternalLink size={12} />
+                  </button>
+
+                  <button
+                    onClick={() => openLink("https://www.tiktok.com/@sanktlive")}
+                    className="flex items-center gap-2 p-2 bg-gray-700 hover:bg-gray-600 rounded transition-colors col-span-1 sm:col-span-2"
+                  >
+                    <Music size={16} />
+                    <span>TikTok</span>
+                    <ExternalLink size={12} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3 mt-6">
               <Button
-                onClick={() => setShowRanking(true)}
+                onClick={startGame}
+                size="lg"
+                className="w-full text-xl py-4 bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700"
+              >
+                🎮 JOGAR AGORA!
+              </Button>
+              <Button
+                onClick={() => setShowAbout(false)}
                 variant="outline"
                 size="lg"
-                className="w-full text-lg py-3 border-2 border-purple-400 text-white hover:bg-purple-800"
-                disabled={isLoading}
+                className="w-full text-lg py-3 border-2 border-yellow-400 text-white hover:bg-yellow-800"
               >
-                {isLoading ? (
-                  <span className="flex items-center gap-2">
-                    <Loader2 className="animate-spin" size={18} /> Carregando...
-                  </span>
-                ) : (
-                  "🏆 VER RANKING GLOBAL"
-                )}
+                🏠 VOLTAR AO MENU
               </Button>
             </div>
           </Card>
