@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { saveScore, getRanking } from "@/lib/db-robust"
+import { saveScore, getRanking } from "@/lib/db-fixed"
 
 // API para obter o ranking
 export async function GET() {
