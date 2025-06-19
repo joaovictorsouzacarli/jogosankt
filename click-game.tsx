@@ -5,7 +5,10 @@ import type React from "react"
 import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import Image from "next/image"
+import { Loader2, Twitch } from "lucide-react"
+import type { RankingEntry } from "@/lib/db"
 
 const funnyMessages = [
   "🎉 ACERTOU! Que mira!",
@@ -50,6 +53,32 @@ export default function Component() {
   const [showMessage, setShowMessage] = useState("")
   const [clickEffect, setClickEffect] = useState<{ x: number; y: number } | null>(null)
   const [chatMessage, setChatMessage] = useState("")
+  const [nickname, setNickname] = useState("")
+  const [showRanking, setShowRanking] = useState(false)
+  const [rankings, setRankings] = useState<RankingEntry[]>([])
+  const [nicknameError, setNicknameError] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+
+  // Carregar rankings ao iniciar
+  useEffect(() => {
+    fetchRankings()
+  }, [])
+
+  const fetchRankings = async () => {
+    try {
+      setIsLoading(true)
+      const response = await fetch("/api/rankings")
+      if (response.ok) {
+        const data = await response.json()
+        setRankings(data)
+      }
+    } catch (error) {
+      console.error("Erro ao carregar ranking:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const generateRandomPosition = useCallback(() => {
     const maxX = 85
@@ -97,6 +126,12 @@ export default function Component() {
   }
 
   const startGame = () => {
+    if (!nickname.trim()) {
+      setNicknameError("Digite seu nick para jogar!")
+      return
+    }
+
+    setNicknameError("")
     setScore(0)
     setTimeLeft(30)
     setGameStarted(true)
@@ -104,6 +139,7 @@ export default function Component() {
     setPosition(generateRandomPosition())
     setShowMessage("")
     setChatMessage("")
+    setShowRanking(false)
   }
 
   const resetGame = () => {
@@ -114,7 +150,32 @@ export default function Component() {
     setPosition({ x: 50, y: 50 })
     setShowMessage("")
     setChatMessage("")
+    setShowRanking(false)
   }
+
+  const saveScoreToServer = useCallback(async () => {
+    if (!nickname || score <= 0) return
+
+    try {
+      setIsSaving(true)
+      const response = await fetch("/api/rankings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ nickname, score }),
+      })
+
+      if (response.ok) {
+        // Atualizar o ranking após salvar
+        await fetchRankings()
+      }
+    } catch (error) {
+      console.error("Erro ao salvar pontuação:", error)
+    } finally {
+      setIsSaving(false)
+    }
+  }, [nickname, score])
 
   const getScoreComment = () => {
     if (score >= 50) return "🏆 LENDA DO STREAM! SANKT ficaria orgulhoso!"
@@ -127,6 +188,10 @@ export default function Component() {
     return "😅 LURKER DETECTED! Todo mundo começa assim!"
   }
 
+  const openTwitchChannel = () => {
+    window.open("https://www.twitch.tv/sankt", "_blank")
+  }
+
   useEffect(() => {
     let timer: NodeJS.Timeout
 
@@ -134,13 +199,14 @@ export default function Component() {
       timer = setTimeout(() => {
         setTimeLeft((prev) => prev - 1)
       }, 1000)
-    } else if (timeLeft === 0) {
+    } else if (timeLeft === 0 && gameStarted) {
       setGameOver(true)
       setGameStarted(false)
+      saveScoreToServer()
     }
 
     return () => clearTimeout(timer)
-  }, [gameStarted, timeLeft, gameOver])
+  }, [gameStarted, timeLeft, gameOver, saveScoreToServer])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-700 to-indigo-900 relative overflow-hidden">
@@ -230,42 +296,175 @@ export default function Component() {
         </div>
       )}
 
-      {/* Tela inicial */}
-      {!gameStarted && !gameOver && (
+      {/* Tela inicial com entrada de nickname */}
+      {!gameStarted && !gameOver && !showRanking && (
         <div className="absolute inset-0 flex items-center justify-center z-20">
           <Card className="p-8 bg-gray-900/95 backdrop-blur-sm text-center max-w-md mx-4 border-4 border-purple-500 shadow-2xl text-white">
-            <div className="text-6xl mb-4 animate-bounce">📻</div>
+            <div className="flex justify-between items-center mb-4">
+              <div className="text-6xl animate-bounce">📻</div>
+              <button
+                onClick={openTwitchChannel}
+                className="bg-[#9146FF] hover:bg-[#7a2df0] text-white p-2 rounded-lg flex items-center gap-2 transition-all"
+                aria-label="Abrir canal da Twitch"
+              >
+                <Twitch size={24} />
+                <span className="font-bold">SANKT</span>
+              </button>
+            </div>
+
             <h1 className="text-3xl font-bold mb-4 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
               🎮 CAÇA AO SANKT! 📻
             </h1>
             <p className="text-gray-300 mb-6 text-lg">
               Bem-vindo ao stream mais ÉPICO! 🔴<br />O SANKT está transmitindo a rádio enquanto joga Albion Online!
-              Clique nele antes que ele escape para outra dungeon! ⚔️
               <br />
               <span className="text-purple-400 font-bold">30 segundos de pura adrenalina!</span>
             </p>
-            <Button
-              onClick={startGame}
-              size="lg"
-              className="w-full text-xl py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 animate-pulse"
-            >
-              🚀 ENTRAR NO STREAM! 🚀
-            </Button>
+
+            <div className="mb-6">
+              <label htmlFor="nickname" className="block text-left text-sm font-medium text-gray-300 mb-1">
+                Seu Nick:
+              </label>
+              <Input
+                id="nickname"
+                type="text"
+                placeholder="Digite seu nick para jogar"
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                className="bg-gray-800 border-purple-500 text-white"
+                maxLength={15}
+              />
+              {nicknameError && <p className="text-red-400 text-sm mt-1 text-left">{nicknameError}</p>}
+            </div>
+
+            <div className="space-y-3">
+              <Button
+                onClick={startGame}
+                size="lg"
+                className="w-full text-xl py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 animate-pulse"
+              >
+                🚀 ENTRAR NO STREAM! 🚀
+              </Button>
+
+              <Button
+                onClick={() => setShowRanking(true)}
+                variant="outline"
+                size="lg"
+                className="w-full text-lg py-3 border-2 border-purple-400 text-white hover:bg-purple-800"
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="animate-spin" size={18} /> Carregando...
+                  </span>
+                ) : (
+                  "🏆 VER RANKING GLOBAL"
+                )}
+              </Button>
+            </div>
           </Card>
         </div>
       )}
 
-      {/* Tela de game over */}
+      {/* Tela de ranking */}
+      {showRanking && !gameStarted && !gameOver && (
+        <div className="absolute inset-0 flex items-center justify-center z-20">
+          <Card className="p-8 bg-gray-900/95 backdrop-blur-sm text-center max-w-md mx-4 border-4 border-purple-500 shadow-2xl text-white">
+            <div className="text-4xl mb-4">🏆</div>
+            <h2 className="text-2xl font-bold mb-6 bg-gradient-to-r from-yellow-400 to-orange-400 bg-clip-text text-transparent">
+              RANKING GLOBAL DOS GUERREIROS
+            </h2>
+
+            <div className="mb-6 max-h-64 overflow-y-auto">
+              {isLoading ? (
+                <div className="flex justify-center items-center py-8">
+                  <Loader2 className="animate-spin text-purple-400" size={40} />
+                </div>
+              ) : rankings.length > 0 ? (
+                <table className="w-full text-left">
+                  <thead className="border-b border-purple-500">
+                    <tr>
+                      <th className="py-2">#</th>
+                      <th className="py-2">Nick</th>
+                      <th className="py-2 text-right">Pontos</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rankings.map((entry, index) => (
+                      <tr
+                        key={index}
+                        className={`${index < 3 ? "text-yellow-300 font-bold" : "text-gray-300"} ${entry.nickname === nickname ? "bg-purple-800/50" : ""}`}
+                      >
+                        <td className="py-2">{index + 1}</td>
+                        <td className="py-2">{entry.nickname}</td>
+                        <td className="py-2 text-right">{entry.score}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="text-gray-400">Nenhuma pontuação registrada ainda!</p>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              <Button
+                onClick={startGame}
+                size="lg"
+                className="w-full text-xl py-4 bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700"
+              >
+                🎮 JOGAR AGORA!
+              </Button>
+              <Button
+                onClick={() => setShowRanking(false)}
+                variant="outline"
+                size="lg"
+                className="w-full text-lg py-3 border-2 border-purple-400 text-white hover:bg-purple-800"
+              >
+                🏠 VOLTAR AO MENU
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Tela de game over com ranking */}
       {gameOver && (
         <div className="absolute inset-0 flex items-center justify-center z-20">
           <Card className="p-8 bg-gray-900/95 backdrop-blur-sm text-center max-w-md mx-4 border-4 border-purple-500 shadow-2xl text-white">
             <div className="text-6xl mb-4 animate-spin">🎊</div>
             <h2 className="text-3xl font-bold mb-4">🎉 STREAM FINALIZADA! 🎉</h2>
-            <p className="text-xl text-gray-300 mb-2">Seus cliques ÉPICOS:</p>
+            <p className="text-xl text-gray-300 mb-2">Sua pontuação ÉPICA:</p>
             <p className="text-5xl font-bold text-purple-400 mb-4 animate-pulse">{score}</p>
             <p className="text-lg text-purple-300 font-bold mb-6 bg-purple-900/50 p-3 rounded-lg border-2 border-purple-400">
               {getScoreComment()}
             </p>
+
+            {/* Mini ranking */}
+            <div className="mb-6 bg-gray-800/70 p-3 rounded-lg">
+              <h3 className="text-xl font-bold mb-2 text-yellow-300">🏆 TOP 3 JOGADORES</h3>
+              {isSaving ? (
+                <div className="flex justify-center items-center py-4">
+                  <Loader2 className="animate-spin text-purple-400" size={24} />
+                  <span className="ml-2">Salvando pontuação...</span>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {rankings.slice(0, 3).map((entry, index) => (
+                    <div
+                      key={index}
+                      className={`flex justify-between items-center ${entry.nickname === nickname ? "bg-purple-800/50 p-1 rounded" : ""}`}
+                    >
+                      <span className="font-bold">
+                        {index === 0 ? "🥇" : index === 1 ? "🥈" : "🥉"} {entry.nickname}
+                      </span>
+                      <span className="text-yellow-300">{entry.score}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="space-y-3">
               <Button
                 onClick={startGame}
@@ -273,6 +472,14 @@ export default function Component() {
                 className="w-full text-xl py-4 bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700"
               >
                 🔄 NOVA STREAM!
+              </Button>
+              <Button
+                onClick={() => setShowRanking(true)}
+                variant="outline"
+                size="lg"
+                className="w-full text-lg py-3 border-2 border-yellow-400 text-white hover:bg-yellow-800"
+              >
+                🏆 VER RANKING COMPLETO
               </Button>
               <Button
                 onClick={resetGame}
