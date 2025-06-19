@@ -1,7 +1,7 @@
 import { neon } from "@neondatabase/serverless"
 
 // Você vai substituir esta URL pela sua URL do Neon
-const DATABASE_URL = "postgresql://neondb_owner:npg_hjY1OTpz9RmD@ep-tight-sea-a83bzzqr-pooler.eastus2.azure.neon.tech/neondb?sslmode=require"
+const DATABASE_URL = process.env.DATABASE_URL || "postgresql://neondb_owner:npg_hjY1OTpz9RmD@ep-tight-sea-a83bzzqr-pooler.eastus2.azure.neon.tech/neondb?sslmode=require"
 
 // Cliente SQL
 export const sql = neon(DATABASE_URL)
